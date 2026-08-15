@@ -7,6 +7,8 @@ from sqlalchemy import Boolean, DateTime, Float, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 from sqlalchemy.types import JSON, Uuid
 
+from rba_contracts import Action, DecisionRecord, Reason, RiskLevel
+
 
 class Base(DeclarativeBase):
     pass
@@ -34,3 +36,22 @@ class AuditDecision(Base):
 
 def already_stored(session: Session, event_id: UUID) -> bool:
     return session.get(AuditDecision, event_id) is not None
+
+
+def row_to_record(row: AuditDecision) -> DecisionRecord:
+    payload = row.payload or {}
+    raw_reasons = payload.get("reasons") or []
+    return DecisionRecord(
+        event_id=row.event_id,
+        occurred_at=row.occurred_at,
+        application_id=row.application_id,
+        user_id=row.user_id,
+        risk_score=row.risk_score,
+        risk_level=RiskLevel(row.risk_level),
+        action=Action(row.action),
+        reasons=[Reason.model_validate(item) for item in raw_reasons],
+        model_version=row.model_version,
+        policy_version=row.policy_version,
+        feature_schema_version=row.feature_schema_version,
+        fallback=row.fallback,
+    )

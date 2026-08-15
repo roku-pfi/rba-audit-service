@@ -5,25 +5,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rba-audit-service"
 version = "0.1.0"
-description = "Async consumer: persist DecisionMade events for audit/replay."
+description = "Async consumer + HTTP read API: persist DecisionMade events for audit/admin."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Juan Ignacio Gonzalez" }]
 dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
     "pydantic>=2.6",
     "pydantic-settings>=2.3",
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.1",
     "pika>=1.3",
-    "rba-contracts>=0.1.1",
+    "rba-contracts>=0.3.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "httpx>=0.27"]
 
 [project.scripts]
 rba-audit-service = "rba_audit_service.main:main"
+rba-audit-api = "rba_audit_service.api:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
