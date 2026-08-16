@@ -67,6 +67,10 @@ rba-audit-api
 
 `ONCE=true` on the consumer processes one message then exits.
 
+Image (from polyrepo root): `docker build -f rba-audit-service/Dockerfile -t rba-audit-service:dev .`
+Same image, two k8s Deployments (`rba-audit-service` + `rba-audit-api`).
+Cluster: `../rba-infra/scripts/k3d-up.sh`.
+
 ## Env
 
 | Variable | Default |
@@ -86,5 +90,6 @@ rba-audit-api
 
 ## Status
 
-Phase 4 consumer + IdP-6 HTTP read. Remaining: DLQ, metrics, k8s Deployment.
-Roadmap: `../docs/plans/status.md`.
+Phase 4 consumer + IdP-6 HTTP read. k8s Deployments (consumer + `audit-api`)
+via `../rba-infra` Helm (K8s-1). Remaining: DLQ. Roadmap:
+`../docs/plans/status.md`.
