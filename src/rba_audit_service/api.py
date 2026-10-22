@@ -59,13 +59,18 @@ def create_app(
     @app.get("/decisions", response_model=DecisionListResponse)
     def list_decisions(
         request: Request,
+        tenant_id: str,
         user_id: str | None = None,
         application_id: str | None = None,
         action: Action | None = None,
         limit: int = Query(default=50, ge=1, le=200),
     ) -> DecisionListResponse:
         factory = request.app.state.session_factory
-        stmt = select(AuditDecision).order_by(AuditDecision.occurred_at.desc())
+        stmt = (
+            select(AuditDecision)
+            .where(AuditDecision.tenant_id == tenant_id)
+            .order_by(AuditDecision.occurred_at.desc())
+        )
         if user_id:
             stmt = stmt.where(AuditDecision.user_id == user_id)
         if application_id:
@@ -79,11 +84,12 @@ def create_app(
         return DecisionListResponse(items=items, count=len(items))
 
     @app.get("/decisions/{event_id}", response_model=DecisionRecord)
-    def get_decision(event_id: UUID, request: Request) -> DecisionRecord:
+    def get_decision(event_id: UUID, tenant_id: str, request: Request) -> DecisionRecord:
         factory = request.app.state.session_factory
         with factory() as session:
             row = session.get(AuditDecision, event_id)
-        if row is None:
+        # Another tenant's event is indistinguishable from a missing one.
+        if row is None or row.tenant_id != tenant_id:
             raise HTTPException(status_code=404, detail="unknown event")
         return row_to_record(row)
 

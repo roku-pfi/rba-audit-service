@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from rba_audit_service.config import Settings, get_settings
-from rba_audit_service.db import AuditDecision, Base, already_stored
+from rba_audit_service.db import Base, already_stored, row_from_event
 
 logger = logging.getLogger(__name__)
 
@@ -40,22 +40,7 @@ def run(settings: Settings | None = None) -> None:
                 if already_stored(session, event.event_id):
                     logger.info("skip duplicate event_id=%s", event.event_id)
                 else:
-                    session.add(
-                        AuditDecision(
-                            event_id=event.event_id,
-                            occurred_at=event.occurred_at,
-                            application_id=event.application_id,
-                            user_id=event.user_id,
-                            risk_score=event.risk_score,
-                            risk_level=event.risk_level.value,
-                            action=event.action.value,
-                            model_version=event.model_version,
-                            policy_version=event.policy_version,
-                            feature_schema_version=event.feature_schema_version,
-                            fallback=event.fallback,
-                            payload=event.model_dump(mode="json"),
-                        )
-                    )
+                    session.add(row_from_event(event))
                     session.commit()
                     logger.info("audited event_id=%s action=%s", event.event_id, event.action)
             channel.basic_ack(delivery_tag=method.delivery_tag)
