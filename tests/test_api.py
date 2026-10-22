@@ -41,6 +41,8 @@ def _insert(client: TestClient, **overrides) -> UUID:
         feature_schema_version="1.0.0",
         fallback=False,
         reasons=overrides.pop("reasons", []),
+        login=overrides.pop("login", None),
+        features=overrides.pop("features", None),
     )
     with client.app.state.session_factory() as session:
         session.add(row_from_event(event))
@@ -121,3 +123,33 @@ def test_monitor_record_keeps_verdict_and_enforcement() -> None:
             "REQUIRE_MFA",
             "MONITOR",
         )
+
+
+def test_a_record_says_where_the_login_came_from_and_what_was_familiar() -> None:
+    """0.13.0: the console shows country, network and device, and which of
+    them the user had used before."""
+    from rba_contracts.events import LoginEventSnapshot
+    from rba_contracts.features import FeatureVectorV1
+
+    login = LoginEventSnapshot(
+        login_timestamp=datetime.now(timezone.utc),
+        ip_address="198.51.100.20",
+        asn="2516",
+        country="JP",
+        device_type="desktop",
+        os="macOS",
+        browser="Chrome",
+    )
+    features = FeatureVectorV1(
+        user_login_count=12, ip_seen_before=0, asn_seen_before=0, country_seen_before=0,
+        device_type_seen_before=1, os_seen_before=1, browser_seen_before=1, hour_seen_before=1,
+        seconds_since_last_login=7200.0, failed_logins_last_24h=0,
+    )
+    with _client() as client:
+        with_context = _insert(client, login=login, features=features)
+        without = _insert(client)
+        got = client.get(f"/decisions/{with_context}", params=BANK).json()
+        assert (got["login"]["country"], got["login"]["asn"]) == ("JP", "2516")
+        assert got["features"]["country_seen_before"] == 0
+        old = client.get(f"/decisions/{without}", params=BANK).json()
+        assert old["login"] is None and old["features"] is None

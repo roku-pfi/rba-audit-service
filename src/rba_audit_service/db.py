@@ -8,6 +8,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 from sqlalchemy.types import JSON, Uuid
 
 from rba_contracts import Action, DecisionMadeEvent, DecisionRecord, EngineMode, Reason, RiskLevel
+from rba_contracts.events import LoginEventSnapshot
+from rba_contracts.features import FeatureVectorV1
 
 
 class Base(DeclarativeBase):
@@ -86,4 +88,7 @@ def row_to_record(row: AuditDecision) -> DecisionRecord:
         policy_version=row.policy_version,
         feature_schema_version=row.feature_schema_version,
         fallback=row.fallback,
+        # Already in the stored event; events from before Phase 4 lack them.
+        login=LoginEventSnapshot.model_validate(payload["login"]) if payload.get("login") else None,
+        features=FeatureVectorV1.model_validate(payload["features"]) if payload.get("features") else None,
     )
