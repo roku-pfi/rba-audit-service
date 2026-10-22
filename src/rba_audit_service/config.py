@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://rba:rba@localhost:5432/rba_audit"
     use_memory_db: bool = False
+    # C-4: create tables at startup (compose, k3d). Off where
+    # `python -m rba_audit_service.init` runs as a Job first.
+    init_on_startup: bool = True
     rabbitmq_url: str = "amqp://rba:rba@localhost:5672/"
     exchange_name: str = "rba.events"
     queue_name: str = "rba.audit.decision-made.v1"

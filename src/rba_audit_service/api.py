@@ -41,7 +41,8 @@ def create_app(
         logging.basicConfig(level=logging.INFO)
         if session_factory is None:
             engine = _make_engine(settings)
-            Base.metadata.create_all(engine)
+            if settings.init_on_startup:
+                Base.metadata.create_all(engine)
             factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
         else:
             factory = session_factory

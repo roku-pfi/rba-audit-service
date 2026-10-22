@@ -18,7 +18,8 @@ def run(settings: Settings | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     engine = create_engine(settings.database_url, future=True)
-    Base.metadata.create_all(engine)
+    if settings.init_on_startup:
+        Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
     params = pika.URLParameters(settings.rabbitmq_url)
