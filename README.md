@@ -28,7 +28,7 @@ HTTP  GET /decisions?user_id=&application_id=&action=&limit=
         → DecisionListResponse / DecisionRecord (reasons from payload)
 ```
 
-Handler failures **nack without requeue** (no DLQ yet). Prefetch = 1.
+Handler failures go to `<queue>.dlq` (dead-letter exchange `rba.events.dlx`); replay them with `python -m rba_event_publisher.dlq replay <queue>` once the cause is fixed. Prefetch = 1. Metrics on :9102 (profile) / :9103 (audit consumer): `rba_events_consumed_total`, `rba_event_lag_seconds`.
 
 ## Layout
 
@@ -91,5 +91,5 @@ Cluster: `../rba-infra/scripts/k3d-up.sh`.
 ## Status
 
 Phase 4 consumer + IdP-6 HTTP read. k8s Deployments (consumer + `audit-api`)
-via `../rba-infra` Helm (K8s-1). Remaining: DLQ. Roadmap:
+via `../rba-infra` Helm (K8s-1). DLQ and lag metrics done. Roadmap:
 `../docs/plans/status.md`.

@@ -3,14 +3,40 @@ from __future__ import annotations
 import logging
 
 import pika
+from prometheus_client import start_http_server
 from rba_contracts import DecisionMadeEvent
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from rba_audit_service.config import Settings, get_settings
 from rba_audit_service.db import Base, already_stored, row_from_event
+from rba_audit_service.metrics import CONSUMED, observe_lag
 
 logger = logging.getLogger(__name__)
+CONSUMER = "audit"
+
+
+def declare(ch, settings: Settings) -> None:
+    """The queue and its dead-letter queue. A queue left from before the
+    dead-letter queue existed must be deleted once (empty) to get them."""
+    ch.exchange_declare(exchange=settings.exchange_name, exchange_type="topic", durable=True)
+    ch.exchange_declare(exchange=settings.dead_letter_exchange, exchange_type="direct", durable=True)
+    dlq = f"{settings.queue_name}.dlq"
+    ch.queue_declare(queue=dlq, durable=True)
+    ch.queue_bind(queue=dlq, exchange=settings.dead_letter_exchange, routing_key=settings.queue_name)
+    ch.queue_declare(
+        queue=settings.queue_name,
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": settings.dead_letter_exchange,
+            "x-dead-letter-routing-key": settings.queue_name,
+        },
+    )
+    ch.queue_bind(
+        queue=settings.queue_name,
+        exchange=settings.exchange_name,
+        routing_key=settings.routing_key,
+    )
 
 
 def run(settings: Settings | None = None) -> None:
@@ -22,16 +48,12 @@ def run(settings: Settings | None = None) -> None:
         Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
+    if settings.metrics_port:
+        start_http_server(settings.metrics_port)
     params = pika.URLParameters(settings.rabbitmq_url)
     conn = pika.BlockingConnection(params)
     ch = conn.channel()
-    ch.exchange_declare(exchange=settings.exchange_name, exchange_type="topic", durable=True)
-    ch.queue_declare(queue=settings.queue_name, durable=True)
-    ch.queue_bind(
-        queue=settings.queue_name,
-        exchange=settings.exchange_name,
-        routing_key=settings.routing_key,
-    )
+    declare(ch, settings)
     ch.basic_qos(prefetch_count=1)
 
     def _on_message(channel, method, _properties, body: bytes) -> None:
@@ -45,11 +67,14 @@ def run(settings: Settings | None = None) -> None:
                     session.commit()
                     logger.info("audited event_id=%s action=%s", event.event_id, event.action)
             channel.basic_ack(delivery_tag=method.delivery_tag)
+            CONSUMED.labels(CONSUMER, "applied").inc()
+            observe_lag(CONSUMER, event.occurred_at)
             if settings.once:
                 channel.stop_consuming()
         except Exception:
-            logger.exception("audit handler failed")
+            logger.exception("audit handler failed; dead-lettered to %s.dlq", settings.queue_name)
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            CONSUMED.labels(CONSUMER, "dead_lettered").inc()
 
     ch.basic_consume(queue=settings.queue_name, on_message_callback=_on_message)
     logger.info("audit-service consuming queue=%s", settings.queue_name)

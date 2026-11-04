@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     rabbitmq_url: str = "amqp://rba:rba@localhost:5672/"
     exchange_name: str = "rba.events"
     queue_name: str = "rba.audit.decision-made.v1"
+    # A message that cannot be stored goes to "<queue_name>.dlq" through this
+    # exchange, not away; `python -m rba_event_publisher.dlq` replays it.
+    dead_letter_exchange: str = "rba.events.dlx"
+    metrics_port: int = 9103  # Prometheus (the consumer, not the API); 0 turns it off
     routing_key: str = DECISION_MADE_CHANNEL
     once: bool = False
 
