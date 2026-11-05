@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from rba_audit_service.config import Settings, get_settings
 from rba_audit_service.db import Base, already_stored, row_from_event
 from rba_audit_service.metrics import CONSUMED, observe_lag
+from rba_audit_service.retry import apply_with_retries
 
 logger = logging.getLogger(__name__)
 CONSUMER = "audit"
@@ -56,16 +57,30 @@ def run(settings: Settings | None = None) -> None:
     declare(ch, settings)
     ch.basic_qos(prefetch_count=1)
 
+    def _apply(body: bytes) -> DecisionMadeEvent:
+        event = DecisionMadeEvent.model_validate_json(body)
+        with factory() as session:
+            if already_stored(session, event.event_id):
+                logger.info("skip duplicate event_id=%s", event.event_id)
+            else:
+                session.add(row_from_event(event))
+                session.commit()
+                logger.info("audited event_id=%s action=%s", event.event_id, event.action)
+        return event
+
+    def _on_retry(attempt: int, exc: Exception) -> None:
+        logger.warning("audit handler failed (attempt %d), retrying: %r", attempt, exc)
+        CONSUMED.labels(CONSUMER, "retried").inc()
+
     def _on_message(channel, method, _properties, body: bytes) -> None:
         try:
-            event = DecisionMadeEvent.model_validate_json(body)
-            with factory() as session:
-                if already_stored(session, event.event_id):
-                    logger.info("skip duplicate event_id=%s", event.event_id)
-                else:
-                    session.add(row_from_event(event))
-                    session.commit()
-                    logger.info("audited event_id=%s action=%s", event.event_id, event.action)
+            event = apply_with_retries(
+                lambda: _apply(body),
+                delays=settings.retry_delays,
+                # Keeps the connection's heartbeats going while it waits.
+                sleep=channel.connection.sleep,
+                on_retry=_on_retry,
+            )
             channel.basic_ack(delivery_tag=method.delivery_tag)
             CONSUMED.labels(CONSUMER, "applied").inc()
             observe_lag(CONSUMER, event.occurred_at)

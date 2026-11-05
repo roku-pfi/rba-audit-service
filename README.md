@@ -28,7 +28,7 @@ HTTP  GET /decisions?user_id=&application_id=&action=&limit=
         → DecisionListResponse / DecisionRecord (reasons from payload)
 ```
 
-Handler failures go to `<queue>.dlq` (dead-letter exchange `rba.events.dlx`); replay them with `python -m rba_event_publisher.dlq replay <queue>` once the cause is fixed. Prefetch = 1. Metrics on :9102 (profile) / :9103 (audit consumer): `rba_events_consumed_total`, `rba_event_lag_seconds`.
+A failed handler is retried in place after 0.5, 2 and 8 s (`RETRY_DELAYS`; a malformed message is not retried); if it still fails the message goes to `<queue>.dlq` (dead-letter exchange `rba.events.dlx`); replay them with `python -m rba_event_publisher.dlq replay <queue>` once the cause is fixed. Prefetch = 1. Metrics on :9102 (profile) / :9103 (audit consumer): `rba_events_consumed_total`, `rba_event_lag_seconds`.
 
 ## Layout
 
